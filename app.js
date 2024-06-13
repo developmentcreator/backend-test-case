@@ -1,22 +1,46 @@
-// app.js
-
 const express = require("express");
+const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
+const swaggerUi = require("swagger-ui-express");
+const swaggerDocument = require("./swagger.json");
 const app = express();
 const port = 3000;
 
+// Middleware
 app.use(bodyParser.json());
 
-// Sample data
-let books = [
-  { id: 1, title: "Book 1", quantity: 5 },
-  { id: 2, title: "Book 2", quantity: 3 },
-];
+// Swagger setup
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-let members = [
-  { id: 1, name: "Member 1", borrowedBooks: [], penaltyEndDate: null },
-  { id: 2, name: "Member 2", borrowedBooks: [], penaltyEndDate: null },
-];
+// MongoDB connection
+const mongoURI = "mongodb://localhost:27017/bookBorrowingApp";
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true });
+
+// MongoDB models
+const Book = mongoose.model(
+  "Book",
+  new mongoose.Schema({
+    code: String,
+    title: String,
+    author: String,
+    stock: Number,
+  })
+);
+
+const Member = mongoose.model(
+  "Member",
+  new mongoose.Schema({
+    code: String,
+    name: String,
+    borrowedBooks: [
+      {
+        bookCode: String,
+        borrowedDate: Date,
+      },
+    ],
+    penaltyEndDate: Date,
+  })
+);
 
 const MAX_BORROWED_BOOKS = 2;
 const PENALTY_DURATION = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
@@ -25,37 +49,20 @@ const BORROW_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 // Helper function to get current date
 const currentDate = () => new Date().getTime();
 
-// Middleware to check if member exists
-const checkMemberExists = (req, res, next) => {
-  const memberId = parseInt(req.params.memberId);
-  const member = members.find((m) => m.id === memberId);
-  if (!member) {
-    return res.status(404).send("Member not found");
-  }
-  req.member = member;
-  next();
-};
+// Routes
 
-// Middleware to check if book exists
-const checkBookExists = (req, res, next) => {
-  const bookId = parseInt(req.params.bookId);
-  const book = books.find((b) => b.id === bookId);
-  if (!book) {
-    return res.status(404).send("Book not found");
-  }
-  req.book = book;
-  next();
-};
+// Borrow a book
+app.post("/borrow/:memberCode/:bookCode", async (req, res) => {
+  const member = await Member.findOne({ code: req.params.memberCode });
+  const book = await Book.findOne({ code: req.params.bookCode });
 
-// Route to borrow a book
-app.post("/borrow/:memberId/:bookId", checkMemberExists, checkBookExists, (req, res) => {
-  const { member, book } = req;
+  if (!member || !book) return res.status(404).send("Member or Book not found");
 
   if (member.borrowedBooks.length >= MAX_BORROWED_BOOKS) {
     return res.status(400).send("Cannot borrow more than 2 books");
   }
 
-  if (book.quantity <= 0) {
+  if (book.stock <= 0) {
     return res.status(400).send("Book is not available");
   }
 
@@ -63,15 +70,23 @@ app.post("/borrow/:memberId/:bookId", checkMemberExists, checkBookExists, (req, 
     return res.status(400).send("Member is under penalty");
   }
 
-  member.borrowedBooks.push({ bookId: book.id, borrowedDate: currentDate() });
-  book.quantity -= 1;
+  member.borrowedBooks.push({ bookCode: book.code, borrowedDate: new Date() });
+  book.stock -= 1;
+
+  await member.save();
+  await book.save();
+
   res.send("Book borrowed successfully");
 });
 
-// Route to return a book
-app.post("/return/:memberId/:bookId", checkMemberExists, checkBookExists, (req, res) => {
-  const { member, book } = req;
-  const borrowedBookIndex = member.borrowedBooks.findIndex((b) => b.bookId === book.id);
+// Return a book
+app.post("/return/:memberCode/:bookCode", async (req, res) => {
+  const member = await Member.findOne({ code: req.params.memberCode });
+  const book = await Book.findOne({ code: req.params.bookCode });
+
+  if (!member || !book) return res.status(404).send("Member or Book not found");
+
+  const borrowedBookIndex = member.borrowedBooks.findIndex((b) => b.bookCode === book.code);
 
   if (borrowedBookIndex === -1) {
     return res.status(400).send("Book not borrowed by this member");
@@ -82,32 +97,31 @@ app.post("/return/:memberId/:bookId", checkMemberExists, checkBookExists, (req, 
   const returnDate = currentDate();
 
   member.borrowedBooks.splice(borrowedBookIndex, 1);
-  book.quantity += 1;
+  book.stock += 1;
 
   if (returnDate - borrowDate > BORROW_DURATION) {
     member.penaltyEndDate = new Date(returnDate + PENALTY_DURATION);
+    await member.save();
+    await book.save();
     return res.send("Book returned late. Member is penalized for 3 days");
   }
+
+  await member.save();
+  await book.save();
 
   res.send("Book returned successfully");
 });
 
-// Route to list all books
-app.get("/books", (req, res) => {
-  const availableBooks = books.map((book) => ({
-    ...book,
-    availableQuantity: book.quantity,
-  }));
-  res.json(availableBooks);
+// List all books
+app.get("/books", async (req, res) => {
+  const books = await Book.find({});
+  res.json(books);
 });
 
-// Route to list all members
-app.get("/members", (req, res) => {
-  const memberList = members.map((member) => ({
-    ...member,
-    borrowedBooksCount: member.borrowedBooks.length,
-  }));
-  res.json(memberList);
+// List all members
+app.get("/members", async (req, res) => {
+  const members = await Member.find({});
+  res.json(members);
 });
 
 // Start the server

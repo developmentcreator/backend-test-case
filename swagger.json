@@ -1,0 +1,93 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Book Borrowing API",
+    "version": "1.0.0",
+    "description": "API for borrowing and returning books"
+  },
+  "host": "localhost:3000",
+  "basePath": "/",
+  "schemes": ["http"],
+  "paths": {
+    "/borrow/{memberCode}/{bookCode}": {
+      "post": {
+        "summary": "Borrow a book",
+        "parameters": [
+          {
+            "name": "memberCode",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "bookCode",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Book borrowed successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Member or Book not found"
+          }
+        }
+      }
+    },
+    "/return/{memberCode}/{bookCode}": {
+      "post": {
+        "summary": "Return a book",
+        "parameters": [
+          {
+            "name": "memberCode",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "bookCode",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Book returned successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Member or Book not found"
+          }
+        }
+      }
+    },
+    "/books": {
+      "get": {
+        "summary": "List all books",
+        "responses": {
+          "200": {
+            "description": "List of books"
+          }
+        }
+      }
+    },
+    "/members": {
+      "get": {
+        "summary": "List all members",
+        "responses": {
+          "200": {
+            "description": "List of members"
+          }
+        }
+      }
+    }
+  }
+}
